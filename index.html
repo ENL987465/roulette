@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오늘 뭐 먹지? 메뉴 추천 룰렛</title>
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f7f9fc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .roulette-container {
+            position: relative;
+            width: 500px;
+            height: 500px;
+        }
+
+        /* 룰렛을 가리키는 화살표 상단 표시 */
+        .arrow {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 30px solid #ff4757;
+            z-index: 10;
+        }
+
+        canvas {
+            background-color: #fff;
+            border-radius: 50%;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        button {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #fff;
+            background-color: #ff4757;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(255, 71, 87, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background-color: #ff6b81;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        /* 결과 창 모달 스타일 */
+        .result-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 30px 50px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+            z-index: 100;
+        }
+
+        .result-modal h2 {
+            margin: 0 0 10px 0;
+            font-size: 1.5rem;
+            color: #666;
+        }
+
+        .result-modal .menu-name {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #ff4757;
+            margin-bottom: 20px;
+        }
+
+        .result-modal button {
+            margin-top: 10px;
+            background-color: #2ed573;
+            box-shadow: 0 5px 15px rgba(46, 213, 115, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🍕 오늘 뭐 먹지? 룰렛 게임 🍔</h1>
+    
+    <div class="roulette-container">
+        <div class="arrow"></div>
+        <canvas id="rouletteCanvas" width="500" height="500"></canvas>
+    </div>
+
+    <button id="spinBtn" onclick="spinRoulette()">룰렛 돌리기!</button>
+
+    <!-- 결과 모달 창 -->
+    <div id="resultModal" class="result-modal">
+        <h2>오늘의 추천 메뉴는?</h2>
+        <div id="menuName" class="menu-name"></div>
+        <button onclick="closeModal()">다시 돌리기</button>
+    </div>
+
+    <script>
+        // 요청하신 80개 메뉴 배열 (일부 오타 수정 완료)
+        const menuList = [
+            "김치찌개", "된장찌개", "제육볶음", "불고기", "비빔밥", "순두부찌개", "갈비탕", "닭볶음탕", "육개장", "보쌈/족발",
+            "초밥 (스시)", "돈카츠", "규동 (소고기 덮밥)", "사케동 (연어 덮밥)", "라멘", "우동", "텐동 (튀김 덮밥)", "소바 (메밀국수)", "오코노미야끼", "가라아게",
+            "짜장면", "짬뽕", "탕수육", "마라탕", "마라샹궈", "볶음밥", "꿔바로우", "고추잡채와 꽃빵", "유린기", "멘보샤",
+            "토마토/크림/오일 파스타", "피자", "스테이크", "리조또", "햄버거", "타코/퀘사디아", "쌀국수", "팟타이", "인도 커리와 난", "감바스 알 아히요",
+            "떡볶이", "모듬 튀김(김말이,+오징어튀김+떡볶이 국물)", "찰순대", "라면", "치킨", "골뱅이무침", "닭발", "김밥", "칼국수", "수제비",
+            "감자탕", "부대찌개", "동태찌개/생선매운탕", "소고기버섯전골", "추어탕", "오징어제육볶음(오삼불고기)", "매운 갈비찜", "궁중떡볶이", "닭갈비", "떡갈비",
+            "아구찜/해물찜", "갈치조림/고등어조림", "코다리조림", "두부조림", "묵은지등갈비찜", "모듬 생선구이", "해물파전", "감자전", "녹두빈대떡", "더덕구이",
+            "곤드레밥/돌솥밥", "쌈밥", "전복죽", "낙지비빔밥", "꼬막비빔밥", "잔치국수", "비빔국수", "묵밥/도토리묵무침", "육전", "안동찜닭"
+        ];
+
+        const canvas = document.getElementById("rouletteCanvas");
+        const ctx = canvas.getContext("2d");
+        const spinBtn = document.getElementById("spinBtn");
+        const resultModal = document.getElementById("resultModal");
+        const menuNameDisplay = document.getElementById("menuName");
+
+        const numSegments = menuList.length;
+        const arcSize = (2 * Math.PI) / numSegments; // 각 항목별 부채꼴 각도
+        let currentAngle = 0; // 현재 회전 각도
+
+        // 80개 판을 구분할 파스텔톤 계열 색상 배열 생성
+        const colors = [];
+        for (let i = 0; i < numSegments; i++) {
+            colors.push(`hsl(${(i * 360) / numSegments}, 75%, 75%)`);
+        }
+
+        // 룰렛판 그리기 함수
+        function drawRoulette() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = canvas.width / 2;
+
+            for (let i = 0; i < numSegments; i++) {
+                const angle = currentAngle + (i * arcSize);
+                
+                // 부채꼴 그리기
+                ctx.fillStyle = colors[i];
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, angle, angle + arcSize);
+                ctx.lineTo(centerX, centerY);
+                ctx.fill();
+                ctx.stroke();
+
+                // 텍스트 추가 (80개이므로 아주 조밀하게 배치)
+                ctx.save();
+                ctx.fillStyle = "#333";
+                ctx.translate(centerX, centerY);
+                ctx.rotate(angle + arcSize / 2);
+                
+                // 글씨 크기를 작게 조절하여 겹침 방지
+                ctx.font = "bold 9px sans-serif";
+                ctx.textAlign = "right";
+                
+                // 너무 긴 메뉴 이름은 일부 잘라내거나 압축하여 표기
+                let text = menuList[i];
+                if (text.length > 8) text = text.substring(0, 7) + "..";
+                
+                ctx.fillText(text, radius - 15, 3);
+                ctx.restore();
+            }
+
+            // 중앙 장식원
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        // 초기 화면 그리기
+        drawRoulette();
+
+        // 룰렛 회전 애니메이션 실행 함수
+        function spinRoulette() {
+            spinBtn.disabled = true;
+            
+            const spinAngleStart = Math.random() * 10 + 10; // 초기 회전 속도 무작위 지정
+            let spinTime = 0;
+            const spinTimeTotal = Math.random() * 3000 + 4000; // 4초 ~ 7초 동안 회전
+
+            function rotate() {
+                spinTime += 20;
+                if (spinTime >= spinTimeTotal) {
+                    stopRotate();
+                    return;
+                }
+                // 서서히 멈추는 효과를 주기 위해 감속도 계산 (Ease Out 기능)
+                const spinAngle = spinAngleStart - easeOut(spinTime, 0, spinAngleStart, spinTimeTotal);
+                currentAngle += (spinAngle * Math.PI) / 180;
+                drawRoulette();
+                requestAnimationFrame(rotate);
+            }
+
+            rotate();
+        }
+
+        // 감속 효과 함수 (Ease Out)
+        function easeOut(t, b, c, d) {
+            const ts = (t /= d) * t;
+            const tc = ts * t;
+            return b + c * (tc + -3 * ts + 3 * t);
+        }
+
+        // 회전 종료 시 당첨 결과 계산 함수
+        function stopRotate() {
+            // 화살표가 12시 방향(즉, -90도 혹은 1.5 * Math.PI 위치)을 가리키고 있으므로 이를 기준으로 인덱스 계산
+            const degrees = (currentAngle * 180) / Math.PI + 90;
+            const arcd = (arcSize * 180) / Math.PI;
+            const index = Math.floor((360 - (degrees % 360)) / arcd) % numSegments;
+            
+            // 결과 모달창 띄우기
+            menuNameDisplay.innerText = menuList[index];
+            resultModal.style.display = "block";
+        }
+
+        // 모달 닫기
+        function closeModal() {
+            resultModal.style.display = "none";
+            spinBtn.disabled = false;
+        }
+    </script>
+</body>
+</html>
